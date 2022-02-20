@@ -1,8 +1,8 @@
 package io.moyada.dynamicmvc.handler;
 
-import org.springframework.beans.BeansException;
-import org.springframework.context.ApplicationContext;
-import org.springframework.context.ApplicationContextAware;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
+import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.core.annotation.AnnotationUtils;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -11,8 +11,12 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.WebApplicationContext;
+import org.springframework.web.method.HandlerMethod;
+import org.springframework.web.servlet.DispatcherServlet;
 import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
+import org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
@@ -24,8 +28,18 @@ import java.util.List;
  * @since 1.0
  **/
 @Component
-public class HandlerMapperRegister implements ApplicationContextAware {
+public class HandlerMapperRegister {
 
+    @Autowired
+    private WebApplicationContext context;
+
+    @Autowired
+    private ConfigurableListableBeanFactory beanFactory;
+
+    @Autowired
+    private DispatcherServlet dispatcherServlet;
+
+    @Autowired
     private RequestMappingHandlerMapping requestMappingHandlerMapping;
 
     public void addMapper(String urlPath, Object handler, Method method,
@@ -89,8 +103,19 @@ public class HandlerMapperRegister implements ApplicationContextAware {
         return params.toArray(new String[0]);
     }
 
-    @Override
-    public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
-        requestMappingHandlerMapping = applicationContext.getBean(RequestMappingHandlerMapping.class);
+    public void newMapper(Object handler, Method method) {
+        if (!handler.getClass().isAnnotationPresent(RestController.class)) {
+            throw new IllegalArgumentException("handle must be declare @RestController");
+        }
+
+        HandlerMethod handlerMethod = new ServletInvocableHandlerMethod(handler, method);
+
+        RequestMappingHandlerMapping handlerMapping = new RequestMappingHandlerMapping();
+        handlerMapping.setDefaultHandler(handler);
+        handlerMapping.setOrder(0);
+        handlerMapping.setApplicationContext(context);
+
+        beanFactory.registerSingleton(handler.getClass().getSimpleName() + "HandlerMethod", handlerMethod);
+        dispatcherServlet.onApplicationEvent(new ContextRefreshedEvent(context));
     }
 }
